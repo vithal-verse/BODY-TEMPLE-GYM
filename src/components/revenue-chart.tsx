@@ -28,13 +28,13 @@ export default function RevenueChart({
             dataKey="month"
             axisLine={{ stroke: "#2c271d" }}
             tickLine={false}
-            tick={{ fill: "#f5f1e699", fontSize: 12, fontFamily: "Inter, sans-serif" }}
+            tick={{ fill: "#f5f1e699", fontSize: 12, fontFamily: "Geist Sans, sans-serif" }}
           />
           <YAxis
             axisLine={false}
             tickLine={false}
             width={40}
-            tick={{ fill: "#f5f1e699", fontSize: 12, fontFamily: "Inter, sans-serif" }}
+            tick={{ fill: "#f5f1e699", fontSize: 12, fontFamily: "Geist Sans, sans-serif" }}
             tickFormatter={(v) =>
               v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v}`
             }
@@ -45,7 +45,7 @@ export default function RevenueChart({
               background: "#17140f",
               border: "2px solid #2c271d",
               borderRadius: 0,
-              fontFamily: "Inter, sans-serif",
+              fontFamily: "Geist Sans, sans-serif",
               fontSize: 13,
             }}
             labelStyle={{ color: "#f5f1e6" }}

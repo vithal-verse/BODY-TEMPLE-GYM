@@ -149,10 +149,10 @@ create policy "Admins can update own profile" on public.admin_profiles
 insert into public.membership_plans (name, duration_months, fee_amount)
 select v.name, v.duration_months, v.fee_amount
 from (values
-  ('Monthly', 1, 1500),
-  ('Quarterly', 3, 4000),
-  ('Half-Yearly', 6, 7500),
-  ('Annual', 12, 14000)
+  ('1 Month', 1, 1500),
+  ('2 Months', 2, 2000),
+  ('3 Months', 3, 2500),
+  ('4 Months', 4, 3200)
 ) as v(name, duration_months, fee_amount)
 where not exists (select 1 from public.membership_plans p where p.name = v.name);
 

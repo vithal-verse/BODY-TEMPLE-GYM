@@ -13,8 +13,8 @@
   --color-alert: #e34935;        /* expiring / overdue */
   --color-good: #3f8f5f;         /* active / paid */
 
-  --font-display: "Anton", "Arial Narrow", sans-serif;
-  --font-body: "Inter", "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Geist Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Geist Sans", "Helvetica Neue", Arial, sans-serif;
 
   --background: var(--color-ink);
   --foreground: var(--color-paper);
@@ -40,6 +40,14 @@
 
 * {
   border-color: var(--color-ink-line);
+}
+
+/* Tailwind's font-* utilities only set font-family, not weight. Geist Sans
+   is a normal grotesk at its default weight, so the display role needs an
+   explicit bold weight to keep headlines reading as headlines instead of
+   flattening to body-text weight. */
+.font-display {
+  font-weight: 700;
 }
 
 html {
