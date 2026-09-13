@@ -106,7 +106,7 @@ export default function MemberForm({
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Priya Sharma"
+            placeholder="Paras Bhonsle"
             className={inputClass}
           />
         </Field>
@@ -126,7 +126,7 @@ export default function MemberForm({
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="priya@example.com"
+            placeholder="paras@example.com"
             className={inputClass}
           />
         </Field>
