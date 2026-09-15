@@ -18,7 +18,7 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen flex-col lg:flex-row">
       {/* Left: identity panel */}
-      <section className="relative flex flex-1 flex-col justify-between overflow-hidden bg-ink px-8 py-10 lg:px-16 lg:py-14">
+      <section className="relative flex flex-1 flex-col justify-between overflow-hidden px-8 py-10 lg:px-16 lg:py-14">
         {/* Ambient glow — slow breathing pulse behind the hero logo */}
         <motion.div
           aria-hidden
