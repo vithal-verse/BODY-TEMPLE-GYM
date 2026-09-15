@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MotionConfig } from "framer-motion";
+import ParticleBackground from "@/components/particle-background";
 import "@fontsource/geist-sans/400.css";
 import "@fontsource/geist-sans/500.css";
 import "@fontsource/geist-sans/600.css";
@@ -23,6 +24,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className="h-full antialiased">
       <body className="min-h-full flex flex-col bg-ink text-paper">
+        {/* Painted first in DOM order, so it sits behind everything below
+            without needing z-index — no ancestor here creates a stacking
+            context that would complicate that. */}
+        <ParticleBackground />
         {/* reducedMotion="user" makes every Framer Motion animation in the
             app automatically respect the OS-level "reduce motion"
             accessibility setting, without needing to check it manually
