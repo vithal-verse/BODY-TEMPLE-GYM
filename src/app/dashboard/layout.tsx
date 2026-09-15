@@ -27,7 +27,7 @@ export default async function DashboardLayout({
     profile?.full_name || user.email?.split("@")[0] || "Admin";
 
   return (
-    <div className="flex min-h-screen bg-ink">
+    <div className="flex min-h-screen">
       <Sidebar />
       <div className="flex flex-1 flex-col lg:pl-64">
         <TopBar displayName={displayName} email={user.email ?? ""} />
