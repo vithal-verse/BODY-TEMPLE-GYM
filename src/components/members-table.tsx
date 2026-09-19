@@ -182,6 +182,9 @@ export default function MembersTable({ members }: { members: Member[] }) {
                 <Th label="End" onClick={() => toggleSort("end_date")} active={sortKey === "end_date"} dir={sortDir} />
                 <Th label="Fees paid" onClick={() => toggleSort("fees_paid")} active={sortKey === "fees_paid"} dir={sortDir} />
                 <th className="px-4 py-3 text-left font-body text-xs font-semibold uppercase tracking-wide text-paper/50">
+                  Outstanding
+                </th>
+                <th className="px-4 py-3 text-left font-body text-xs font-semibold uppercase tracking-wide text-paper/50">
                   Status
                 </th>
                 <th className="px-4 py-3 text-right font-body text-xs font-semibold uppercase tracking-wide text-paper/50">
@@ -302,6 +305,24 @@ function MemberRow({
       </td>
       <td className="px-4 py-3 font-body text-sm text-paper/70">
         {formatCurrency(member.fees_paid)}
+      </td>
+      <td className="px-4 py-3">
+        {(() => {
+          const outstanding = Math.max(0, (member.fees_due || 0) - (member.fees_paid || 0));
+          if (outstanding > 0) {
+            return (
+              <span className="font-body text-sm font-semibold text-alert">
+                {formatCurrency(outstanding)}
+              </span>
+            );
+          }
+          if (member.fees_due > 0) {
+            return (
+              <span className="font-body text-xs text-good">Paid ✓</span>
+            );
+          }
+          return <span className="font-body text-xs text-paper/30">—</span>;
+        })()}
       </td>
       <td className="px-4 py-3">
         <StatusPill status={member.status} />
