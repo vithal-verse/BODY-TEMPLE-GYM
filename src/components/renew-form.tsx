@@ -50,6 +50,9 @@ export default function RenewForm({
   const [amount, setAmount] = useState(
     defaultPlan?.fee_amount.toString() ?? ""
   );
+  const [feesDue, setFeesDue] = useState(
+    defaultPlan?.fee_amount.toString() ?? ""
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -59,6 +62,7 @@ export default function RenewForm({
     if (plan) {
       setEndDate(format(addMonths(parseISO(startDate), plan.duration_months), "yyyy-MM-dd"));
       setAmount(plan.fee_amount.toString());
+      setFeesDue(plan.fee_amount.toString());
     }
   }
 
@@ -105,6 +109,7 @@ export default function RenewForm({
         plan_id: term.plan_id,
         plan_name: term.plan_name,
         fees_paid: term.amount,
+        fees_due: feesDue ? parseFloat(feesDue) : term.amount,
         start_date: term.start_date,
         end_date: term.end_date,
       })
@@ -166,13 +171,23 @@ export default function RenewForm({
               ))}
             </select>
           </Field>
-          <Field label="Fees paid (₹)">
+          <Field label="Fees paid (₹)" hint="Amount actually collected today">
             <input
               type="number"
               min={0}
               step="0.01"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
+              className={inputClass}
+            />
+          </Field>
+          <Field label="Total fees due (₹)" hint="Full plan price for this term">
+            <input
+              type="number"
+              min={0}
+              step="0.01"
+              value={feesDue}
+              onChange={(e) => setFeesDue(e.target.value)}
               className={inputClass}
             />
           </Field>
@@ -233,11 +248,12 @@ export default function RenewForm({
 const inputClass =
   "w-full border-2 border-ink-line bg-ink px-4 py-2.5 font-body text-sm text-paper placeholder:text-paper/30 outline-none transition-colors focus:border-mango";
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="font-body text-sm font-medium text-paper/75">
         {label}
+        {hint && <span className="ml-1.5 font-normal text-paper/35 text-xs">{hint}</span>}
       </label>
       {children}
     </div>
