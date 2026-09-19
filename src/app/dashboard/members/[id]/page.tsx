@@ -1,11 +1,27 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil, ArrowLeft, Mail, Phone, Calendar, Wallet, RotateCw, History, ClipboardCheck } from "lucide-react";
+import {
+  Pencil,
+  ArrowLeft,
+  Mail,
+  Phone,
+  Calendar,
+  Wallet,
+  RotateCw,
+  History,
+  ClipboardCheck,
+  Receipt,
+  AlertTriangle,
+  CheckCircle2,
+} from "lucide-react";
 import { getMember } from "@/lib/members";
 import { getRenewalHistory } from "@/lib/renewals";
 import { getMemberAttendanceHistory } from "@/lib/attendance";
+import { getMemberPayments } from "@/lib/payments";
 import { formatCurrency, formatDate, initials } from "@/lib/utils";
 import StatusPill from "@/components/status-pill";
+import PaymentBadge from "@/components/payment-badge";
+import MemberPaymentPanel from "@/components/member-payment-panel";
 
 export default async function MemberDetailPage({
   params,
@@ -13,13 +29,17 @@ export default async function MemberDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [member, history, attendance] = await Promise.all([
+  const [member, history, attendance, payments] = await Promise.all([
     getMember(id),
     getRenewalHistory(id),
     getMemberAttendanceHistory(id),
+    getMemberPayments(id),
   ]);
 
   if (!member) notFound();
+
+  const outstanding = Math.max(0, (member.fees_due || 0) - (member.fees_paid || 0));
+  const latestRenewalId = history[0]?.id ?? null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -52,6 +72,18 @@ export default async function MemberDetailPage({
                   {member.age} years old
                 </span>
               )}
+              {/* Outstanding badge in header */}
+              {outstanding > 0 ? (
+                <span className="inline-flex items-center gap-1.5 border border-alert/30 bg-alert/10 px-2.5 py-1 font-body text-xs font-semibold text-alert">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  {formatCurrency(outstanding)} outstanding
+                </span>
+              ) : member.fees_due > 0 ? (
+                <span className="inline-flex items-center gap-1.5 border border-good/30 bg-good/10 px-2.5 py-1 font-body text-xs font-semibold text-good">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Paid in full
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
@@ -73,6 +105,7 @@ export default async function MemberDetailPage({
         </div>
       </div>
 
+      {/* Info tiles */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <InfoTile icon={Mail} label="Email" value={member.email || "Not on file"} />
         <InfoTile icon={Phone} label="Phone" value={member.phone || "Not on file"} />
@@ -83,10 +116,30 @@ export default async function MemberDetailPage({
         />
         <InfoTile
           icon={Wallet}
-          label="Fees paid"
-          value={formatCurrency(member.fees_paid)}
+          label="Fees paid / due"
+          value={`${formatCurrency(member.fees_paid)} / ${formatCurrency(member.fees_due || 0)}`}
+          highlight={outstanding > 0 ? "alert" : outstanding === 0 && member.fees_due > 0 ? "good" : undefined}
         />
       </div>
+
+      {/* Outstanding alert banner */}
+      {outstanding > 0 && (
+        <div className="flex flex-col gap-4 border-2 border-alert/40 bg-alert/5 p-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-alert" />
+            <div>
+              <p className="font-display text-base text-alert">
+                Outstanding balance: {formatCurrency(outstanding)}
+              </p>
+              <p className="mt-1 font-body text-sm text-paper/60">
+                {formatCurrency(member.fees_paid)} paid of{" "}
+                {formatCurrency(member.fees_due || 0)} total.{" "}
+                {formatCurrency(outstanding)} remaining.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {member.notes && (
         <div className="border-2 border-ink-line bg-ink-raised p-6">
@@ -97,6 +150,16 @@ export default async function MemberDetailPage({
         </div>
       )}
 
+      {/* Payment section — record payments + history */}
+      <MemberPaymentPanel
+        memberId={member.id}
+        renewalId={latestRenewalId}
+        feesDue={member.fees_due || 0}
+        feesPaid={member.fees_paid}
+        payments={payments}
+      />
+
+      {/* Renewal history */}
       <div className="border-2 border-ink-line bg-ink-raised p-6">
         <div className="mb-4 flex items-center gap-2 text-paper">
           <History className="h-4 w-4 text-mango" />
@@ -147,7 +210,10 @@ export default async function MemberDetailPage({
               {history.length > 1 && (
                 <tfoot>
                   <tr className="border-t-2 border-ink-line">
-                    <td colSpan={3} className="px-2 py-3 font-body text-xs font-semibold uppercase tracking-wide text-paper/50">
+                    <td
+                      colSpan={3}
+                      className="px-2 py-3 font-body text-xs font-semibold uppercase tracking-wide text-paper/50"
+                    >
                       Total collected
                     </td>
                     <td className="px-2 py-3 font-display text-sm text-mango">
@@ -161,6 +227,7 @@ export default async function MemberDetailPage({
         )}
       </div>
 
+      {/* Attendance */}
       <div className="border-2 border-ink-line bg-ink-raised p-6">
         <div className="mb-4 flex items-center gap-2 text-paper">
           <ClipboardCheck className="h-4 w-4 text-mango" />
@@ -201,11 +268,20 @@ function InfoTile({
   icon: Icon,
   label,
   value,
+  highlight,
 }: {
   icon: React.ElementType;
   label: string;
   value: string;
+  highlight?: "alert" | "good";
 }) {
+  const valueClass =
+    highlight === "alert"
+      ? "text-alert"
+      : highlight === "good"
+      ? "text-good"
+      : "text-paper";
+
   return (
     <div className="flex flex-col gap-2 border-2 border-ink-line bg-ink-raised p-5">
       <div className="flex items-center gap-2 text-paper/40">
@@ -214,7 +290,7 @@ function InfoTile({
           {label}
         </span>
       </div>
-      <p className="font-body text-sm font-medium text-paper">{value}</p>
+      <p className={`font-body text-sm font-medium ${valueClass}`}>{value}</p>
     </div>
   );
 }
