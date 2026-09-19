@@ -32,6 +32,9 @@ export default function MemberForm({
   const [feesPaid, setFeesPaid] = useState(
     existingMember?.fees_paid?.toString() ?? ""
   );
+  const [feesDue, setFeesDue] = useState(
+    existingMember?.fees_due?.toString() ?? ""
+  );
   const [notes, setNotes] = useState(existingMember?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -44,6 +47,8 @@ export default function MemberForm({
         format(addMonths(new Date(startDate), plan.duration_months), "yyyy-MM-dd")
       );
       if (!feesPaid) setFeesPaid(plan.fee_amount.toString());
+      // Always set fees_due to the plan price
+      setFeesDue(plan.fee_amount.toString());
     }
   }
 
@@ -78,6 +83,7 @@ export default function MemberForm({
       start_date: startDate,
       end_date: endDate || null,
       fees_paid: feesPaid ? parseFloat(feesPaid) : 0,
+      fees_due: feesDue ? parseFloat(feesDue) : (plan?.fee_amount ?? 0),
       notes: notes.trim() || null,
     };
 
@@ -184,13 +190,24 @@ export default function MemberForm({
             ))}
           </select>
         </Field>
-        <Field label="Fees paid (₹)">
+        <Field label="Fees paid (₹)" hint="Amount collected today">
           <input
             type="number"
             min={0}
             step="0.01"
             value={feesPaid}
             onChange={(e) => setFeesPaid(e.target.value)}
+            placeholder="1500"
+            className={inputClass}
+          />
+        </Field>
+        <Field label="Total fees due (₹)" hint="Full plan price">
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={feesDue}
+            onChange={(e) => setFeesDue(e.target.value)}
             placeholder="1500"
             className={inputClass}
           />
@@ -264,10 +281,12 @@ const inputClass =
 function Field({
   label,
   required,
+  hint,
   children,
 }: {
   label: string;
   required?: boolean;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -275,6 +294,7 @@ function Field({
       <label className="font-body text-sm font-medium text-paper/75">
         {label}
         {required && <span className="text-mango"> *</span>}
+        {hint && <span className="ml-1.5 font-normal text-paper/35 text-xs">{hint}</span>}
       </label>
       {children}
     </div>
