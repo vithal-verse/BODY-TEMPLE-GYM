@@ -27,6 +27,7 @@ export type Member = {
   start_date: string;
   end_date: string | null;
   fees_paid: number;
+  fees_due: number;
   status: MemberStatus;
   notes: string | null;
   created_at: string;
@@ -45,6 +46,20 @@ export type Renewal = {
 };
 
 export type RenewalInsert = Omit<Renewal, "id" | "created_at">;
+
+export type PaymentMethod = "cash" | "upi" | "card";
+
+export type Payment = {
+  id: string;
+  member_id: string;
+  renewal_id: string | null;
+  amount: number;
+  method: PaymentMethod;
+  note: string | null;
+  paid_at: string;
+};
+
+export type PaymentInsert = Omit<Payment, "id">;
 
 export type Attendance = {
   id: string;
@@ -114,6 +129,25 @@ export type Database = {
             foreignKeyName: "renewals_member_id_fkey";
             columns: ["member_id"];
             referencedRelation: "members";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      payments: {
+        Row: Payment;
+        Insert: PaymentInsert;
+        Update: Partial<PaymentInsert>;
+        Relationships: [
+          {
+            foreignKeyName: "payments_member_id_fkey";
+            columns: ["member_id"];
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "payments_renewal_id_fkey";
+            columns: ["renewal_id"];
+            referencedRelation: "renewals";
             referencedColumns: ["id"];
           }
         ];
