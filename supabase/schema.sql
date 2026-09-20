@@ -31,7 +31,9 @@ create table if not exists public.members (
   start_date date not null default current_date,
   end_date date,
   fees_paid numeric(10, 2) not null default 0,
-  status text not null default 'active' check (status in ('active', 'expired')),
+  amount_due numeric(10, 2) not null default 0, -- what's owed for the current term; fees_paid is the running total actually collected toward it
+  status text not null default 'active' check (status in ('active', 'expired', 'paused')),
+  paused_at date, -- when a pause started; null unless currently paused
   notes text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -55,10 +57,18 @@ create trigger trg_members_updated_at
   before update on public.members
   for each row execute function public.set_updated_at();
 
--- Auto-flip status to 'expired' once end_date has passed, on any write
+-- Auto-flip status to 'expired' once end_date has passed, on any write.
+-- Paused is always an explicit, deliberate state set by the app (pause/
+-- resume actions) — this trigger never infers it and never overrides it,
+-- so an unrelated edit (fixing a phone number, say) can't silently wake
+-- someone out of a pause.
 create or replace function public.set_member_status()
 returns trigger as $$
 begin
+  if new.status = 'paused' then
+    return new;
+  end if;
+
   if new.end_date is not null and new.end_date < current_date then
     new.status = 'expired';
   elsif new.end_date is null or new.end_date >= current_date then
@@ -116,7 +126,8 @@ create table if not exists public.renewals (
   member_id uuid not null references public.members(id) on delete cascade,
   plan_id integer references public.membership_plans(id) on delete set null,
   plan_name text,
-  amount numeric(10, 2) not null default 0,
+  amount numeric(10, 2) not null default 0, -- running total actually paid toward this term
+  amount_due numeric(10, 2) not null default 0, -- what's owed for this term
   start_date date not null,
   end_date date,
   created_at timestamptz not null default now()
@@ -136,6 +147,39 @@ create policy "Admins can insert renewals" on public.renewals
 
 drop policy if exists "Admins can delete renewals" on public.renewals;
 create policy "Admins can delete renewals" on public.renewals
+  for delete using (auth.role() = 'authenticated');
+
+-- ---------------------------------------------------------
+-- payments
+-- Individual payment transactions against a term (a renewals row).
+-- Several of these can sum toward one term's amount_due — that's what
+-- makes partial payments and an outstanding balance possible.
+-- ---------------------------------------------------------
+create table if not exists public.payments (
+  id uuid primary key default gen_random_uuid(),
+  member_id uuid not null references public.members(id) on delete cascade,
+  renewal_id uuid not null references public.renewals(id) on delete cascade,
+  amount numeric(10, 2) not null,
+  method text not null check (method in ('cash', 'upi', 'card', 'other')),
+  paid_at timestamptz not null default now(),
+  notes text
+);
+
+create index if not exists idx_payments_member_id on public.payments(member_id);
+create index if not exists idx_payments_renewal_id on public.payments(renewal_id);
+
+alter table public.payments enable row level security;
+
+drop policy if exists "Admins can read payments" on public.payments;
+create policy "Admins can read payments" on public.payments
+  for select using (auth.role() = 'authenticated');
+
+drop policy if exists "Admins can insert payments" on public.payments;
+create policy "Admins can insert payments" on public.payments
+  for insert with check (auth.role() = 'authenticated');
+
+drop policy if exists "Admins can delete payments" on public.payments;
+create policy "Admins can delete payments" on public.payments
   for delete using (auth.role() = 'authenticated');
 
 -- ---------------------------------------------------------
