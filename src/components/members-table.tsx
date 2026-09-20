@@ -26,12 +26,16 @@ export default function MembersTable({ members }: { members: Member[] }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialFilter =
-    (searchParams.get("filter") as "all" | "active" | "expired" | "expiring") ||
-    "all";
+    (searchParams.get("filter") as
+      | "all"
+      | "active"
+      | "expired"
+      | "paused"
+      | "expiring") || "all";
 
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<
-    "all" | "active" | "expired" | "expiring"
+    "all" | "active" | "expired" | "paused" | "expiring"
   >(initialFilter);
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -42,7 +46,11 @@ export default function MembersTable({ members }: { members: Member[] }) {
   const filtered = useMemo(() => {
     let result = localMembers;
 
-    if (statusFilter === "active" || statusFilter === "expired") {
+    if (
+      statusFilter === "active" ||
+      statusFilter === "expired" ||
+      statusFilter === "paused"
+    ) {
       result = result.filter((m) => m.status === statusFilter);
     } else if (statusFilter === "expiring") {
       const today = new Date();
@@ -119,6 +127,7 @@ export default function MembersTable({ members }: { members: Member[] }) {
     { key: "all", label: "All" },
     { key: "active", label: "Active" },
     { key: "expired", label: "Expired" },
+    { key: "paused", label: "Paused" },
     { key: "expiring", label: "Expiring soon" },
   ];
 
@@ -181,9 +190,6 @@ export default function MembersTable({ members }: { members: Member[] }) {
                 <Th label="Start" onClick={() => toggleSort("start_date")} active={sortKey === "start_date"} dir={sortDir} />
                 <Th label="End" onClick={() => toggleSort("end_date")} active={sortKey === "end_date"} dir={sortDir} />
                 <Th label="Fees paid" onClick={() => toggleSort("fees_paid")} active={sortKey === "fees_paid"} dir={sortDir} />
-                <th className="px-4 py-3 text-left font-body text-xs font-semibold uppercase tracking-wide text-paper/50">
-                  Outstanding
-                </th>
                 <th className="px-4 py-3 text-left font-body text-xs font-semibold uppercase tracking-wide text-paper/50">
                   Status
                 </th>
@@ -305,24 +311,11 @@ function MemberRow({
       </td>
       <td className="px-4 py-3 font-body text-sm text-paper/70">
         {formatCurrency(member.fees_paid)}
-      </td>
-      <td className="px-4 py-3">
-        {(() => {
-          const outstanding = Math.max(0, (member.fees_due || 0) - (member.fees_paid || 0));
-          if (outstanding > 0) {
-            return (
-              <span className="font-body text-sm font-semibold text-alert">
-                {formatCurrency(outstanding)}
-              </span>
-            );
-          }
-          if (member.fees_due > 0) {
-            return (
-              <span className="font-body text-xs text-good">Paid ✓</span>
-            );
-          }
-          return <span className="font-body text-xs text-paper/30">—</span>;
-        })()}
+        {member.amount_due - member.fees_paid > 0 && (
+          <span className="ml-2 text-xs font-semibold text-alert">
+            {formatCurrency(member.amount_due - member.fees_paid)} due
+          </span>
+        )}
       </td>
       <td className="px-4 py-3">
         <StatusPill status={member.status} />
