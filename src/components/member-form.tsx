@@ -2,11 +2,19 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, Banknote, Smartphone, CreditCard, MoreHorizontal } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { playClink, playChime } from "@/lib/sounds";
-import type { Member, MembershipPlan } from "@/types/database";
+import { cn } from "@/lib/utils";
+import type { Member, MembershipPlan, PaymentMethod } from "@/types/database";
 import { addMonths, format } from "date-fns";
+
+const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof Banknote }[] = [
+  { value: "cash", label: "Cash", icon: Banknote },
+  { value: "upi", label: "UPI", icon: Smartphone },
+  { value: "card", label: "Card", icon: CreditCard },
+  { value: "other", label: "Other", icon: MoreHorizontal },
+];
 
 export default function MemberForm({
   plans,
@@ -29,12 +37,13 @@ export default function MemberForm({
     existingMember?.start_date ?? format(new Date(), "yyyy-MM-dd")
   );
   const [endDate, setEndDate] = useState(existingMember?.end_date ?? "");
-  const [feesPaid, setFeesPaid] = useState(
-    existingMember?.fees_paid?.toString() ?? ""
+  const [amountDue, setAmountDue] = useState(
+    existingMember?.amount_due?.toString() ?? ""
   );
-  const [feesDue, setFeesDue] = useState(
-    existingMember?.fees_due?.toString() ?? ""
-  );
+  // Only used when adding a new member — the initial payment collected
+  // right now. Edit never touches payments; see the note above the form.
+  const [initialPayment, setInitialPayment] = useState("");
+  const [method, setMethod] = useState<PaymentMethod>("cash");
   const [notes, setNotes] = useState(existingMember?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -46,9 +55,10 @@ export default function MemberForm({
       setEndDate(
         format(addMonths(new Date(startDate), plan.duration_months), "yyyy-MM-dd")
       );
-      if (!feesPaid) setFeesPaid(plan.fee_amount.toString());
-      // Always set fees_due to the plan price
-      setFeesDue(plan.fee_amount.toString());
+      if (!isEdit) {
+        setAmountDue(plan.fee_amount.toString());
+        setInitialPayment(plan.fee_amount.toString());
+      }
     }
   }
 
@@ -72,68 +82,105 @@ export default function MemberForm({
     setLoading(true);
     const supabase = createClient();
     const plan = plans.find((p) => p.id.toString() === planId);
+    const dueAmount = amountDue ? parseFloat(amountDue) : 0;
 
-    const payload = {
-      name: name.trim(),
-      age: age ? parseInt(age, 10) : null,
-      email: email.trim() || null,
-      phone: phone.trim() || null,
-      plan_id: planId ? parseInt(planId, 10) : null,
-      plan_name: plan?.name ?? null,
-      start_date: startDate,
-      end_date: endDate || null,
-      fees_paid: feesPaid ? parseFloat(feesPaid) : 0,
-      fees_due: feesDue ? parseFloat(feesDue) : (plan?.fee_amount ?? 0),
-      notes: notes.trim() || null,
-    };
+    if (isEdit) {
+      // Edit only ever corrects details and the agreed due amount — it
+      // never touches fees_paid or logs a payment/renewal, so editing a
+      // phone number can never fabricate a transaction record.
+      const { error: dbError } = await supabase
+        .from("members")
+        .update({
+          name: name.trim(),
+          age: age ? parseInt(age, 10) : null,
+          email: email.trim() || null,
+          phone: phone.trim() || null,
+          plan_id: planId ? parseInt(planId, 10) : null,
+          plan_name: plan?.name ?? null,
+          start_date: startDate,
+          end_date: endDate || null,
+          amount_due: dueAmount,
+          notes: notes.trim() || null,
+        })
+        .eq("id", existingMember!.id);
 
-    const { data: insertedMember, error: dbError } = isEdit
-      ? await supabase
-          .from("members")
-          .update(payload)
-          .eq("id", existingMember!.id)
-          .select("id")
-          .single()
-      : await supabase.from("members").insert(payload).select("id").single();
-
-    if (dbError) {
       setLoading(false);
-      setError(dbError.message);
+      if (dbError) {
+        setError(dbError.message);
+        return;
+      }
+      playChime();
+      router.push("/dashboard/members");
+      router.refresh();
       return;
     }
 
-    // Log this term in the renewal history. On creation this becomes the
-    // member's first entry; edits also get logged here so the history
-    // stays accurate even when dates/fees are corrected outside the
-    // dedicated Renew flow.
-    const memberId = insertedMember?.id ?? existingMember?.id;
-    if (memberId) {
-      const { error: renewalError } = await supabase.from("renewals").insert({
-        member_id: memberId,
-        plan_id: payload.plan_id,
-        plan_name: payload.plan_name,
-        amount: payload.fees_paid,
-        start_date: payload.start_date,
-        end_date: payload.end_date,
+    // Adding a new member: create the member, their first term (renewal),
+    // and — if anything was paid right now — the payment transaction for
+    // it, all tied together.
+    const paidNow = initialPayment ? parseFloat(initialPayment) : 0;
+
+    const { data: insertedMember, error: memberError } = await supabase
+      .from("members")
+      .insert({
+        name: name.trim(),
+        age: age ? parseInt(age, 10) : null,
+        email: email.trim() || null,
+        phone: phone.trim() || null,
+        plan_id: planId ? parseInt(planId, 10) : null,
+        plan_name: plan?.name ?? null,
+        start_date: startDate,
+        end_date: endDate || null,
+        fees_paid: paidNow,
+        amount_due: dueAmount,
+        notes: notes.trim() || null,
+      })
+      .select("id")
+      .single();
+
+    if (memberError || !insertedMember) {
+      setLoading(false);
+      setError(memberError?.message ?? "Couldn't create member.");
+      return;
+    }
+
+    const { data: insertedRenewal, error: renewalError } = await supabase
+      .from("renewals")
+      .insert({
+        member_id: insertedMember.id,
+        plan_id: planId ? parseInt(planId, 10) : null,
+        plan_name: plan?.name ?? null,
+        amount: paidNow,
+        amount_due: dueAmount,
+        start_date: startDate,
+        end_date: endDate || null,
+      })
+      .select("id")
+      .single();
+
+    if (renewalError) {
+      console.error("Failed to log initial term:", renewalError.message);
+    } else if (paidNow > 0 && insertedRenewal) {
+      const { error: paymentError } = await supabase.from("payments").insert({
+        member_id: insertedMember.id,
+        renewal_id: insertedRenewal.id,
+        amount: paidNow,
+        method,
       });
-      if (renewalError) {
-        console.error("Failed to log renewal history:", renewalError.message);
-        // Don't block the flow over a history-logging failure — the
-        // member record itself already saved successfully.
+      if (paymentError) {
+        console.error("Failed to log initial payment:", paymentError.message);
       }
     }
 
     setLoading(false);
-
-    if (isEdit) {
-      playChime();
-    } else {
-      playClink();
-    }
-
+    playClink();
     router.push("/dashboard/members");
     router.refresh();
   }
+
+  const outstanding = isEdit
+    ? (existingMember?.amount_due ?? 0) - (existingMember?.fees_paid ?? 0)
+    : 0;
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-6">
@@ -190,24 +237,13 @@ export default function MemberForm({
             ))}
           </select>
         </Field>
-        <Field label="Fees paid (₹)" hint="Amount collected today">
+        <Field label="Amount due (₹)">
           <input
             type="number"
             min={0}
             step="0.01"
-            value={feesPaid}
-            onChange={(e) => setFeesPaid(e.target.value)}
-            placeholder="1500"
-            className={inputClass}
-          />
-        </Field>
-        <Field label="Total fees due (₹)" hint="Full plan price">
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            value={feesDue}
-            onChange={(e) => setFeesDue(e.target.value)}
+            value={amountDue}
+            onChange={(e) => setAmountDue(e.target.value)}
             placeholder="1500"
             className={inputClass}
           />
@@ -230,6 +266,62 @@ export default function MemberForm({
           />
         </Field>
       </div>
+
+      {isEdit ? (
+        outstanding > 0 && (
+          <p className="border-l-4 border-alert bg-alert/10 px-4 py-3 font-body text-sm text-alert">
+            ₹{outstanding.toFixed(0)} still outstanding on this term. Use
+            &quot;Record payment&quot; on their profile to log more paid —
+            editing here only corrects the amount due, not payments.
+          </p>
+        )
+      ) : (
+        <div className="flex flex-col gap-4 border-2 border-ink-line bg-ink p-4">
+          <p className="font-body text-xs font-semibold uppercase tracking-wide text-paper/40">
+            Payment collected now
+          </p>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <Field label="Amount paid now (₹)">
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={initialPayment}
+                onChange={(e) => setInitialPayment(e.target.value)}
+                placeholder="1500"
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Payment method">
+              <div className="grid grid-cols-4 gap-2">
+                {PAYMENT_METHODS.map((m) => (
+                  <button
+                    key={m.value}
+                    type="button"
+                    onClick={() => setMethod(m.value)}
+                    className={cn(
+                      "flex flex-col items-center gap-1 border-2 py-2.5 font-body text-xs font-medium transition-colors",
+                      method === m.value
+                        ? "border-mango bg-mango/10 text-mango"
+                        : "border-ink-line text-paper/50 hover:border-paper/30"
+                    )}
+                  >
+                    <m.icon className="h-4 w-4" />
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          </div>
+          {initialPayment && amountDue && parseFloat(initialPayment) < parseFloat(amountDue) && (
+            <p className="font-body text-xs text-paper/40">
+              ₹{(parseFloat(amountDue) - parseFloat(initialPayment)).toFixed(0)}{" "}
+              will be left outstanding — you can log the rest later from
+              their profile.
+            </p>
+          )}
+        </div>
+      )}
 
       <Field label="Notes (optional)">
         <textarea
@@ -281,12 +373,10 @@ const inputClass =
 function Field({
   label,
   required,
-  hint,
   children,
 }: {
   label: string;
   required?: boolean;
-  hint?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -294,7 +384,6 @@ function Field({
       <label className="font-body text-sm font-medium text-paper/75">
         {label}
         {required && <span className="text-mango"> *</span>}
-        {hint && <span className="ml-1.5 font-normal text-paper/35 text-xs">{hint}</span>}
       </label>
       {children}
     </div>
