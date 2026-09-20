@@ -3,11 +3,18 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { addMonths, addDays, format, isAfter, parseISO } from "date-fns";
-import { Loader2, RotateCw } from "lucide-react";
+import { Loader2, RotateCw, Banknote, Smartphone, CreditCard, MoreHorizontal } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { playChime } from "@/lib/sounds";
-import { formatDate } from "@/lib/utils";
-import type { Member, MembershipPlan } from "@/types/database";
+import { formatDate, cn } from "@/lib/utils";
+import type { Member, MembershipPlan, PaymentMethod } from "@/types/database";
+
+const PAYMENT_METHODS: { value: PaymentMethod; label: string; icon: typeof Banknote }[] = [
+  { value: "cash", label: "Cash", icon: Banknote },
+  { value: "upi", label: "UPI", icon: Smartphone },
+  { value: "card", label: "Card", icon: CreditCard },
+  { value: "other", label: "Other", icon: MoreHorizontal },
+];
 
 function computeDefaultStartDate(member: Member): string {
   const today = new Date();
@@ -47,12 +54,13 @@ export default function RenewForm({
       ? format(addMonths(parseISO(defaultStart), defaultPlan.duration_months), "yyyy-MM-dd")
       : ""
   );
-  const [amount, setAmount] = useState(
+  const [amountDue, setAmountDue] = useState(
     defaultPlan?.fee_amount.toString() ?? ""
   );
-  const [feesDue, setFeesDue] = useState(
+  const [payingNow, setPayingNow] = useState(
     defaultPlan?.fee_amount.toString() ?? ""
   );
+  const [method, setMethod] = useState<PaymentMethod>("cash");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -61,8 +69,8 @@ export default function RenewForm({
     const plan = plans.find((p) => p.id.toString() === newPlanId);
     if (plan) {
       setEndDate(format(addMonths(parseISO(startDate), plan.duration_months), "yyyy-MM-dd"));
-      setAmount(plan.fee_amount.toString());
-      setFeesDue(plan.fee_amount.toString());
+      setAmountDue(plan.fee_amount.toString());
+      setPayingNow(plan.fee_amount.toString());
     }
   }
 
@@ -81,37 +89,60 @@ export default function RenewForm({
 
     const supabase = createClient();
     const plan = plans.find((p) => p.id.toString() === planId);
+    const dueAmount = amountDue ? parseFloat(amountDue) : 0;
+    const paidNow = payingNow ? parseFloat(payingNow) : 0;
 
     const term = {
       plan_id: planId ? parseInt(planId, 10) : null,
       plan_name: plan?.name ?? null,
-      amount: amount ? parseFloat(amount) : 0,
+      amount: paidNow,
+      amount_due: dueAmount,
       start_date: startDate,
       end_date: endDate || null,
     };
 
-    // Log the new term in history first...
-    const { error: renewalError } = await supabase.from("renewals").insert({
-      member_id: member.id,
-      ...term,
-    });
+    // Log the new term first...
+    const { data: insertedRenewal, error: renewalError } = await supabase
+      .from("renewals")
+      .insert({ member_id: member.id, ...term })
+      .select("id")
+      .single();
 
-    if (renewalError) {
+    if (renewalError || !insertedRenewal) {
       setLoading(false);
-      setError(renewalError.message);
+      setError(renewalError?.message ?? "Couldn't start the new term.");
       return;
     }
 
-    // ...then make it the member's current term.
+    // ...then the payment against it, if anything was collected now...
+    if (paidNow > 0) {
+      const { error: paymentError } = await supabase.from("payments").insert({
+        member_id: member.id,
+        renewal_id: insertedRenewal.id,
+        amount: paidNow,
+        method,
+      });
+      if (paymentError) {
+        console.error("Failed to log renewal payment:", paymentError.message);
+      }
+    }
+
+    // ...then make it the member's current term. Explicitly clearing
+    // paused_at and setting status here matters: if they were paused,
+    // renewing is clearly them coming back — the trigger alone wouldn't
+    // touch status if paused_at/status were left unset, since it never
+    // overrides an explicit pause.
     const { error: memberError } = await supabase
       .from("members")
       .update({
         plan_id: term.plan_id,
         plan_name: term.plan_name,
         fees_paid: term.amount,
-        fees_due: feesDue ? parseFloat(feesDue) : term.amount,
+        amount_due: term.amount_due,
         start_date: term.start_date,
         end_date: term.end_date,
+        status: "active",
+        paused_at: null,
       })
       .eq("id", member.id);
 
@@ -171,23 +202,13 @@ export default function RenewForm({
               ))}
             </select>
           </Field>
-          <Field label="Fees paid (₹)" hint="Amount actually collected today">
+          <Field label="Amount due (₹)">
             <input
               type="number"
               min={0}
               step="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className={inputClass}
-            />
-          </Field>
-          <Field label="Total fees due (₹)" hint="Full plan price for this term">
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={feesDue}
-              onChange={(e) => setFeesDue(e.target.value)}
+              value={amountDue}
+              onChange={(e) => setAmountDue(e.target.value)}
               className={inputClass}
             />
           </Field>
@@ -208,6 +229,50 @@ export default function RenewForm({
               className={inputClass}
             />
           </Field>
+        </div>
+
+        <div className="flex flex-col gap-4 border-2 border-ink-line bg-ink p-4">
+          <p className="font-body text-xs font-semibold uppercase tracking-wide text-paper/40">
+            Payment collected now
+          </p>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <Field label="Amount paid now (₹)">
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={payingNow}
+                onChange={(e) => setPayingNow(e.target.value)}
+                className={inputClass}
+              />
+            </Field>
+            <Field label="Payment method">
+              <div className="grid grid-cols-4 gap-2">
+                {PAYMENT_METHODS.map((m) => (
+                  <button
+                    key={m.value}
+                    type="button"
+                    onClick={() => setMethod(m.value)}
+                    className={cn(
+                      "flex flex-col items-center gap-1 border-2 py-2.5 font-body text-xs font-medium transition-colors",
+                      method === m.value
+                        ? "border-mango bg-mango/10 text-mango"
+                        : "border-ink-line text-paper/50 hover:border-paper/30"
+                    )}
+                  >
+                    <m.icon className="h-4 w-4" />
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          </div>
+          {payingNow && amountDue && parseFloat(payingNow) < parseFloat(amountDue) && (
+            <p className="font-body text-xs text-paper/40">
+              ₹{(parseFloat(amountDue) - parseFloat(payingNow)).toFixed(0)}{" "}
+              will be left outstanding on this term.
+            </p>
+          )}
         </div>
 
         {error && (
@@ -248,12 +313,11 @@ export default function RenewForm({
 const inputClass =
   "w-full border-2 border-ink-line bg-ink px-4 py-2.5 font-body text-sm text-paper placeholder:text-paper/30 outline-none transition-colors focus:border-mango";
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="font-body text-sm font-medium text-paper/75">
         {label}
-        {hint && <span className="ml-1.5 font-normal text-paper/35 text-xs">{hint}</span>}
       </label>
       {children}
     </div>
