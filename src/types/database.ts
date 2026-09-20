@@ -1,4 +1,5 @@
-export type MemberStatus = "active" | "expired";
+export type MemberStatus = "active" | "expired" | "paused";
+export type PaymentMethod = "cash" | "upi" | "card" | "other";
 
 // NOTE: every shape below uses `type`, never `interface`. This isn't a
 // style choice — @supabase/postgrest-js's conditional types (used by
@@ -26,9 +27,10 @@ export type Member = {
   plan_name: string | null;
   start_date: string;
   end_date: string | null;
-  fees_paid: number;
-  fees_due: number;
+  fees_paid: number; // running total actually paid toward the current term
+  amount_due: number; // what's owed for the current term
   status: MemberStatus;
+  paused_at: string | null; // set while status is 'paused'; null otherwise
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -39,7 +41,8 @@ export type Renewal = {
   member_id: string;
   plan_id: number | null;
   plan_name: string | null;
-  amount: number;
+  amount: number; // running total actually paid toward this term
+  amount_due: number; // what's owed for this term
   start_date: string;
   end_date: string | null;
   created_at: string;
@@ -47,19 +50,20 @@ export type Renewal = {
 
 export type RenewalInsert = Omit<Renewal, "id" | "created_at">;
 
-export type PaymentMethod = "cash" | "upi" | "card";
-
 export type Payment = {
   id: string;
   member_id: string;
-  renewal_id: string | null;
+  renewal_id: string;
   amount: number;
   method: PaymentMethod;
-  note: string | null;
   paid_at: string;
+  notes: string | null;
 };
 
-export type PaymentInsert = Omit<Payment, "id">;
+export type PaymentInsert = Omit<Payment, "id" | "paid_at" | "notes"> & {
+  paid_at?: string;
+  notes?: string | null;
+};
 
 export type Attendance = {
   id: string;
@@ -80,9 +84,10 @@ export type AdminProfile = {
 
 export type MemberInsert = Omit<
   Member,
-  "id" | "created_at" | "updated_at" | "status"
+  "id" | "created_at" | "updated_at" | "status" | "paused_at"
 > & {
   status?: MemberStatus;
+  paused_at?: string | null;
 };
 
 export type MemberUpdate = Partial<MemberInsert>;
@@ -133,6 +138,19 @@ export type Database = {
           }
         ];
       };
+      attendance: {
+        Row: Attendance;
+        Insert: AttendanceInsert;
+        Update: Partial<AttendanceInsert>;
+        Relationships: [
+          {
+            foreignKeyName: "attendance_member_id_fkey";
+            columns: ["member_id"];
+            referencedRelation: "members";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       payments: {
         Row: Payment;
         Insert: PaymentInsert;
@@ -148,19 +166,6 @@ export type Database = {
             foreignKeyName: "payments_renewal_id_fkey";
             columns: ["renewal_id"];
             referencedRelation: "renewals";
-            referencedColumns: ["id"];
-          }
-        ];
-      };
-      attendance: {
-        Row: Attendance;
-        Insert: AttendanceInsert;
-        Update: Partial<AttendanceInsert>;
-        Relationships: [
-          {
-            foreignKeyName: "attendance_member_id_fkey";
-            columns: ["member_id"];
-            referencedRelation: "members";
             referencedColumns: ["id"];
           }
         ];
