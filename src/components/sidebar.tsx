@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, ClipboardCheck, Users, UserPlus, Download, CreditCard, X, Menu } from "lucide-react";
+import { LayoutGrid, ClipboardCheck, Users, UserPlus, Download, X, Menu } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -14,7 +14,6 @@ const NAV_ITEMS = [
   { href: "/dashboard/check-in", label: "Check in", icon: ClipboardCheck },
   { href: "/dashboard/members", label: "Members", icon: Users },
   { href: "/dashboard/members/new", label: "Add member", icon: UserPlus },
-  { href: "/dashboard/payments", label: "Payments", icon: CreditCard },
   { href: "/dashboard/export", label: "Export data", icon: Download },
 ];
 
