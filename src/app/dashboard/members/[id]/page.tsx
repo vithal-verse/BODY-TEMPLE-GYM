@@ -6,22 +6,30 @@ import {
   Mail,
   Phone,
   Calendar,
-  Wallet,
   RotateCw,
   History,
   ClipboardCheck,
-  Receipt,
-  AlertTriangle,
-  CheckCircle2,
+  Wallet,
+  Banknote,
+  Smartphone,
+  CreditCard,
+  MoreHorizontal,
 } from "lucide-react";
 import { getMember } from "@/lib/members";
 import { getRenewalHistory } from "@/lib/renewals";
 import { getMemberAttendanceHistory } from "@/lib/attendance";
-import { getMemberPayments } from "@/lib/payments";
-import { formatCurrency, formatDate, initials } from "@/lib/utils";
+import { getPaymentHistory } from "@/lib/payments";
+import { formatCurrency, formatDate, initials, cn } from "@/lib/utils";
 import StatusPill from "@/components/status-pill";
-import PaymentBadge from "@/components/payment-badge";
-import MemberPaymentPanel from "@/components/member-payment-panel";
+import PauseResumeAction from "@/components/pause-resume-action";
+import type { PaymentMethod } from "@/types/database";
+
+const METHOD_ICONS: Record<PaymentMethod, typeof Banknote> = {
+  cash: Banknote,
+  upi: Smartphone,
+  card: CreditCard,
+  other: MoreHorizontal,
+};
 
 export default async function MemberDetailPage({
   params,
@@ -33,13 +41,12 @@ export default async function MemberDetailPage({
     getMember(id),
     getRenewalHistory(id),
     getMemberAttendanceHistory(id),
-    getMemberPayments(id),
+    getPaymentHistory(id),
   ]);
 
   if (!member) notFound();
 
-  const outstanding = Math.max(0, (member.fees_due || 0) - (member.fees_paid || 0));
-  const latestRenewalId = history[0]?.id ?? null;
+  const outstanding = Math.max(0, member.amount_due - member.fees_paid);
 
   return (
     <div className="flex flex-col gap-6">
@@ -67,23 +74,21 @@ export default async function MemberDetailPage({
                   {member.plan_name}
                 </span>
               )}
+              {outstanding > 0 && (
+                <span className="border-2 border-alert px-2.5 py-1 font-body text-xs font-semibold text-alert">
+                  {formatCurrency(outstanding)} outstanding
+                </span>
+              )}
+              {member.status === "paused" && member.paused_at && (
+                <span className="font-body text-sm text-paper/40">
+                  Paused since {formatDate(member.paused_at)}
+                </span>
+              )}
               {member.age && (
                 <span className="font-body text-sm text-paper/40">
                   {member.age} years old
                 </span>
               )}
-              {/* Outstanding badge in header */}
-              {outstanding > 0 ? (
-                <span className="inline-flex items-center gap-1.5 border border-alert/30 bg-alert/10 px-2.5 py-1 font-body text-xs font-semibold text-alert">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  {formatCurrency(outstanding)} outstanding
-                </span>
-              ) : member.fees_due > 0 ? (
-                <span className="inline-flex items-center gap-1.5 border border-good/30 bg-good/10 px-2.5 py-1 font-body text-xs font-semibold text-good">
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  Paid in full
-                </span>
-              ) : null}
             </div>
           </div>
         </div>
@@ -95,6 +100,19 @@ export default async function MemberDetailPage({
             <RotateCw className="h-4 w-4" />
             Renew
           </Link>
+          <PauseResumeAction member={member} />
+          <Link
+            href={`/dashboard/members/${member.id}/pay`}
+            className={cn(
+              "flex items-center justify-center gap-2 border-2 px-5 py-2.5 font-display text-base tracking-wide transition-colors",
+              outstanding > 0
+                ? "border-alert text-alert hover:bg-alert hover:text-ink"
+                : "border-good text-good hover:bg-good hover:text-ink"
+            )}
+          >
+            <Wallet className="h-4 w-4" />
+            Record payment
+          </Link>
           <Link
             href={`/dashboard/members/${member.id}/edit`}
             className="flex items-center justify-center gap-2 border-2 border-mango px-5 py-2.5 font-display text-base tracking-wide text-mango transition-colors hover:bg-mango hover:text-ink"
@@ -105,7 +123,6 @@ export default async function MemberDetailPage({
         </div>
       </div>
 
-      {/* Info tiles */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <InfoTile icon={Mail} label="Email" value={member.email || "Not on file"} />
         <InfoTile icon={Phone} label="Phone" value={member.phone || "Not on file"} />
@@ -114,32 +131,38 @@ export default async function MemberDetailPage({
           label="Membership window"
           value={`${formatDate(member.start_date)} → ${formatDate(member.end_date)}`}
         />
-        <InfoTile
-          icon={Wallet}
-          label="Fees paid / due"
-          value={`${formatCurrency(member.fees_paid)} / ${formatCurrency(member.fees_due || 0)}`}
-          highlight={outstanding > 0 ? "alert" : outstanding === 0 && member.fees_due > 0 ? "good" : undefined}
-        />
-      </div>
-
-      {/* Outstanding alert banner */}
-      {outstanding > 0 && (
-        <div className="flex flex-col gap-4 border-2 border-alert/40 bg-alert/5 p-5 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-alert" />
-            <div>
-              <p className="font-display text-base text-alert">
-                Outstanding balance: {formatCurrency(outstanding)}
-              </p>
-              <p className="mt-1 font-body text-sm text-paper/60">
-                {formatCurrency(member.fees_paid)} paid of{" "}
-                {formatCurrency(member.fees_due || 0)} total.{" "}
-                {formatCurrency(outstanding)} remaining.
-              </p>
-            </div>
+        <div className="flex flex-col gap-2 border-2 border-ink-line bg-ink-raised p-5">
+          <div className="flex items-center gap-2 text-paper/40">
+            <Wallet className="h-4 w-4" />
+            <span className="font-body text-xs font-semibold uppercase tracking-wide">
+              Payment status
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between">
+            <span className="font-body text-xs text-paper/40">Due</span>
+            <span className="font-body text-sm text-paper">
+              {formatCurrency(member.amount_due)}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between">
+            <span className="font-body text-xs text-paper/40">Paid</span>
+            <span className="font-body text-sm text-paper">
+              {formatCurrency(member.fees_paid)}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between border-t border-ink-line pt-1.5">
+            <span className="font-body text-xs text-paper/40">Outstanding</span>
+            <span
+              className={cn(
+                "font-display text-sm",
+                outstanding > 0 ? "text-alert" : "text-good"
+              )}
+            >
+              {formatCurrency(outstanding)}
+            </span>
           </div>
         </div>
-      )}
+      </div>
 
       {member.notes && (
         <div className="border-2 border-ink-line bg-ink-raised p-6">
@@ -150,16 +173,53 @@ export default async function MemberDetailPage({
         </div>
       )}
 
-      {/* Payment section — record payments + history */}
-      <MemberPaymentPanel
-        memberId={member.id}
-        renewalId={latestRenewalId}
-        feesDue={member.fees_due || 0}
-        feesPaid={member.fees_paid}
-        payments={payments}
-      />
+      <div className="border-2 border-ink-line bg-ink-raised p-6">
+        <div className="mb-4 flex items-center gap-2 text-paper">
+          <Wallet className="h-4 w-4 text-mango" />
+          <h3 className="font-display text-lg">Payment history</h3>
+        </div>
 
-      {/* Renewal history */}
+        {payments.length === 0 ? (
+          <p className="font-body text-sm text-paper/40">
+            No payments logged yet.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {payments.map((p) => {
+              const Icon = METHOD_ICONS[p.method];
+              return (
+                <li
+                  key={p.id}
+                  className="flex items-center justify-between gap-3 border-2 border-ink-line px-4 py-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className="h-4 w-4 shrink-0 text-mango" />
+                    <div>
+                      <p className="font-body text-sm text-paper">
+                        {formatCurrency(p.amount)}
+                        <span className="ml-2 font-body text-xs uppercase tracking-wide text-paper/40">
+                          {p.method}
+                        </span>
+                      </p>
+                      {p.notes && (
+                        <p className="font-body text-xs text-paper/40">{p.notes}</p>
+                      )}
+                    </div>
+                  </div>
+                  <span className="shrink-0 font-body text-xs text-paper/40">
+                    {new Date(p.paid_at).toLocaleDateString("en-IN", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
       <div className="border-2 border-ink-line bg-ink-raised p-6">
         <div className="mb-4 flex items-center gap-2 text-paper">
           <History className="h-4 w-4 text-mango" />
@@ -172,7 +232,7 @@ export default async function MemberDetailPage({
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[500px] border-collapse">
+            <table className="w-full min-w-[560px] border-collapse">
               <thead>
                 <tr className="border-b border-ink-line">
                   <th className="px-2 py-2 text-left font-body text-xs font-semibold uppercase tracking-wide text-paper/50">
@@ -183,6 +243,9 @@ export default async function MemberDetailPage({
                   </th>
                   <th className="px-2 py-2 text-left font-body text-xs font-semibold uppercase tracking-wide text-paper/50">
                     End
+                  </th>
+                  <th className="px-2 py-2 text-left font-body text-xs font-semibold uppercase tracking-wide text-paper/50">
+                    Due
                   </th>
                   <th className="px-2 py-2 text-left font-body text-xs font-semibold uppercase tracking-wide text-paper/50">
                     Paid
@@ -202,6 +265,9 @@ export default async function MemberDetailPage({
                       {formatDate(r.end_date)}
                     </td>
                     <td className="px-2 py-3 font-body text-sm text-paper/70">
+                      {formatCurrency(r.amount_due)}
+                    </td>
+                    <td className="px-2 py-3 font-body text-sm text-paper/70">
                       {formatCurrency(r.amount)}
                     </td>
                   </tr>
@@ -210,10 +276,7 @@ export default async function MemberDetailPage({
               {history.length > 1 && (
                 <tfoot>
                   <tr className="border-t-2 border-ink-line">
-                    <td
-                      colSpan={3}
-                      className="px-2 py-3 font-body text-xs font-semibold uppercase tracking-wide text-paper/50"
-                    >
+                    <td colSpan={4} className="px-2 py-3 font-body text-xs font-semibold uppercase tracking-wide text-paper/50">
                       Total collected
                     </td>
                     <td className="px-2 py-3 font-display text-sm text-mango">
@@ -227,7 +290,6 @@ export default async function MemberDetailPage({
         )}
       </div>
 
-      {/* Attendance */}
       <div className="border-2 border-ink-line bg-ink-raised p-6">
         <div className="mb-4 flex items-center gap-2 text-paper">
           <ClipboardCheck className="h-4 w-4 text-mango" />
@@ -268,20 +330,11 @@ function InfoTile({
   icon: Icon,
   label,
   value,
-  highlight,
 }: {
   icon: React.ElementType;
   label: string;
   value: string;
-  highlight?: "alert" | "good";
 }) {
-  const valueClass =
-    highlight === "alert"
-      ? "text-alert"
-      : highlight === "good"
-      ? "text-good"
-      : "text-paper";
-
   return (
     <div className="flex flex-col gap-2 border-2 border-ink-line bg-ink-raised p-5">
       <div className="flex items-center gap-2 text-paper/40">
@@ -290,7 +343,7 @@ function InfoTile({
           {label}
         </span>
       </div>
-      <p className={`font-body text-sm font-medium ${valueClass}`}>{value}</p>
+      <p className="font-body text-sm font-medium text-paper">{value}</p>
     </div>
   );
 }
