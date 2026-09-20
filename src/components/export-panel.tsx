@@ -2,19 +2,37 @@
 
 import { Download, FileSpreadsheet } from "lucide-react";
 import type { Member } from "@/types/database";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatCurrency } from "@/lib/utils";
 
-const COLUMNS: { key: keyof Member; label: string }[] = [
-  { key: "name", label: "Name" },
-  { key: "age", label: "Age" },
-  { key: "email", label: "Email" },
-  { key: "phone", label: "Phone" },
-  { key: "plan_name", label: "Plan" },
-  { key: "start_date", label: "Start date" },
-  { key: "end_date", label: "End date" },
-  { key: "fees_paid", label: "Fees paid" },
-  { key: "status", label: "Status" },
+const HEADERS = [
+  "Name",
+  "Age",
+  "Email",
+  "Phone",
+  "Plan",
+  "Start date",
+  "End date",
+  "Amount due",
+  "Fees paid",
+  "Outstanding",
+  "Status",
 ];
+
+function rowValues(m: Member): (string | number)[] {
+  return [
+    m.name,
+    m.age ?? "",
+    m.email ?? "",
+    m.phone ?? "",
+    m.plan_name ?? "",
+    m.start_date ?? "",
+    m.end_date ?? "",
+    m.amount_due,
+    m.fees_paid,
+    Math.max(0, m.amount_due - m.fees_paid),
+    m.status,
+  ];
+}
 
 function toCsvValue(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -27,9 +45,9 @@ function toCsvValue(value: unknown): string {
 
 export default function ExportPanel({ members }: { members: Member[] }) {
   function handleExport() {
-    const header = COLUMNS.map((c) => c.label).join(",");
+    const header = HEADERS.join(",");
     const rows = members.map((m) =>
-      COLUMNS.map((c) => toCsvValue(m[c.key])).join(",")
+      rowValues(m).map(toCsvValue).join(",")
     );
     const csv = [header, ...rows].join("\n");
 
@@ -58,7 +76,7 @@ export default function ExportPanel({ members }: { members: Member[] }) {
               ready to export
             </p>
             <p className="font-body text-sm text-paper/40">
-              Includes contact info, plan, dates, fees, and status.
+              Includes contact info, plan, dates, dues, payments, and status.
             </p>
           </div>
         </div>
@@ -75,33 +93,38 @@ export default function ExportPanel({ members }: { members: Member[] }) {
       {/* Preview */}
       {members.length > 0 && (
         <div className="overflow-x-auto border-2 border-ink-line">
-          <table className="w-full min-w-[700px] border-collapse">
+          <table className="w-full min-w-[900px] border-collapse">
             <thead>
               <tr className="border-b-2 border-ink-line bg-ink-raised">
-                {COLUMNS.map((c) => (
+                {HEADERS.map((h) => (
                   <th
-                    key={c.key}
+                    key={h}
                     className="px-4 py-3 text-left font-body text-xs font-semibold uppercase tracking-wide text-paper/50"
                   >
-                    {c.label}
+                    {h}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {members.slice(0, 5).map((m) => (
-                <tr key={m.id} className="border-b border-ink-line last:border-b-0">
-                  <td className="px-4 py-3 font-body text-sm text-paper">{m.name}</td>
-                  <td className="px-4 py-3 font-body text-sm text-paper/60">{m.age ?? "—"}</td>
-                  <td className="px-4 py-3 font-body text-sm text-paper/60">{m.email || "—"}</td>
-                  <td className="px-4 py-3 font-body text-sm text-paper/60">{m.phone || "—"}</td>
-                  <td className="px-4 py-3 font-body text-sm text-paper/60">{m.plan_name || "—"}</td>
-                  <td className="px-4 py-3 font-body text-sm text-paper/60">{formatDate(m.start_date)}</td>
-                  <td className="px-4 py-3 font-body text-sm text-paper/60">{formatDate(m.end_date)}</td>
-                  <td className="px-4 py-3 font-body text-sm text-paper/60">{m.fees_paid}</td>
-                  <td className="px-4 py-3 font-body text-sm text-paper/60">{m.status}</td>
-                </tr>
-              ))}
+              {members.slice(0, 5).map((m) => {
+                const outstanding = Math.max(0, m.amount_due - m.fees_paid);
+                return (
+                  <tr key={m.id} className="border-b border-ink-line last:border-b-0">
+                    <td className="px-4 py-3 font-body text-sm text-paper">{m.name}</td>
+                    <td className="px-4 py-3 font-body text-sm text-paper/60">{m.age ?? "—"}</td>
+                    <td className="px-4 py-3 font-body text-sm text-paper/60">{m.email || "—"}</td>
+                    <td className="px-4 py-3 font-body text-sm text-paper/60">{m.phone || "—"}</td>
+                    <td className="px-4 py-3 font-body text-sm text-paper/60">{m.plan_name || "—"}</td>
+                    <td className="px-4 py-3 font-body text-sm text-paper/60">{formatDate(m.start_date)}</td>
+                    <td className="px-4 py-3 font-body text-sm text-paper/60">{formatDate(m.end_date)}</td>
+                    <td className="px-4 py-3 font-body text-sm text-paper/60">{formatCurrency(m.amount_due)}</td>
+                    <td className="px-4 py-3 font-body text-sm text-paper/60">{formatCurrency(m.fees_paid)}</td>
+                    <td className="px-4 py-3 font-body text-sm text-paper/60">{formatCurrency(outstanding)}</td>
+                    <td className="px-4 py-3 font-body text-sm text-paper/60">{m.status}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {members.length > 5 && (
