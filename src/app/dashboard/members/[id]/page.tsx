@@ -19,7 +19,7 @@ import { getMember } from "@/lib/members";
 import { getRenewalHistory } from "@/lib/renewals";
 import { getMemberAttendanceHistory } from "@/lib/attendance";
 import { getPaymentHistory } from "@/lib/payments";
-import { formatCurrency, formatDate, initials, cn } from "@/lib/utils";
+import { formatCurrency, formatDate, formatDuration, initials, cn } from "@/lib/utils";
 import StatusPill from "@/components/status-pill";
 import PauseResumeAction from "@/components/pause-resume-action";
 import type { PaymentMethod } from "@/types/database";
@@ -317,6 +317,14 @@ export default async function MemberDetailPage({
                     minute: "2-digit",
                   })}
                 </span>
+                {a.checked_out_at ? (
+                  <span className="text-paper/40">
+                    {" "}
+                    → {formatDuration(a.duration_minutes)}
+                  </span>
+                ) : (
+                  <span className="ml-1.5 text-good">· on floor</span>
+                )}
               </li>
             ))}
           </ul>
