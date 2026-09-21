@@ -39,3 +39,11 @@ export function initials(name: string) {
     .map((part) => part[0]?.toUpperCase())
     .join("");
 }
+
+export function formatDuration(minutes: number | null) {
+  if (minutes === null || minutes < 0) return "—";
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return mins === 0 ? `${hours}h` : `${hours}h ${mins}m`;
+}
