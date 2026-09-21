@@ -87,18 +87,30 @@ create trigger trg_members_status
 
 -- ---------------------------------------------------------
 -- attendance
--- One row per check-in. Staff-operated (no member login exists), so this
--- is a simple log rather than a session/duration tracker: just "did they
--- come in, and when."
+-- One row per visit. checked_out_at is null while the member is still on
+-- the floor — that's what "currently checked in" means everywhere this
+-- table is queried. duration_minutes is filled in at checkout time
+-- (rather than always computed on the fly) so history and averages don't
+-- need to recompute it from two timestamps on every read.
 -- ---------------------------------------------------------
 create table if not exists public.attendance (
   id uuid primary key default gen_random_uuid(),
   member_id uuid not null references public.members(id) on delete cascade,
-  checked_in_at timestamptz not null default now()
+  checked_in_at timestamptz not null default now(),
+  checked_out_at timestamptz,
+  duration_minutes integer
 );
 
 create index if not exists idx_attendance_member_id on public.attendance(member_id);
 create index if not exists idx_attendance_checked_in_at on public.attendance(checked_in_at);
+create index if not exists idx_attendance_checked_out_at on public.attendance(checked_out_at);
+-- Enforces "no duplicate active check-ins" at the database level, not just
+-- as a UI convention: Postgres rejects a second insert for the same
+-- member while one row still has checked_out_at null. Doubles as the
+-- index that speeds up "does this member have an active session" and
+-- "who's currently checked in" lookups, both of which filter on this.
+create unique index if not exists idx_attendance_one_active_per_member
+  on public.attendance(member_id) where checked_out_at is null;
 
 alter table public.attendance enable row level security;
 
@@ -109,6 +121,10 @@ create policy "Admins can read attendance" on public.attendance
 drop policy if exists "Admins can insert attendance" on public.attendance;
 create policy "Admins can insert attendance" on public.attendance
   for insert with check (auth.role() = 'authenticated');
+
+drop policy if exists "Admins can update attendance" on public.attendance;
+create policy "Admins can update attendance" on public.attendance
+  for update using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 drop policy if exists "Admins can delete attendance" on public.attendance;
 create policy "Admins can delete attendance" on public.attendance
