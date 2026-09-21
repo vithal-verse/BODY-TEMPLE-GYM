@@ -11,7 +11,7 @@ import SoundToggle from "@/components/sound-toggle";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Overview", icon: LayoutGrid },
-  { href: "/dashboard/check-in", label: "Check in", icon: ClipboardCheck },
+  { href: "/dashboard/check-in", label: "Attendance", icon: ClipboardCheck },
   { href: "/dashboard/members", label: "Members", icon: Users },
   { href: "/dashboard/members/new", label: "Add member", icon: UserPlus },
   { href: "/dashboard/export", label: "Export data", icon: Download },
