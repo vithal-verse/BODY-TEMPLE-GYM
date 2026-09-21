@@ -69,11 +69,20 @@ export type Attendance = {
   id: string;
   member_id: string;
   checked_in_at: string;
+  checked_out_at: string | null;
+  duration_minutes: number | null;
 };
 
-export type AttendanceInsert = Omit<Attendance, "id" | "checked_in_at"> & {
+export type AttendanceInsert = Omit<
+  Attendance,
+  "id" | "checked_in_at" | "checked_out_at" | "duration_minutes"
+> & {
   checked_in_at?: string;
+  checked_out_at?: string | null;
+  duration_minutes?: number | null;
 };
+
+export type AttendanceUpdate = Partial<AttendanceInsert>;
 
 export type AdminProfile = {
   id: string;
