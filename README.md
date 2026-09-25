@@ -124,3 +124,5 @@ Next.js (App Router) · TypeScript · Tailwind CSS v4 · Supabase (Postgres,
 Auth, RLS) · Recharts · `@fontsource/geist-sans` (self-hosted, avoids a
 Google Fonts fetch at build time)
 
+
+
